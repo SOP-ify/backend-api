@@ -4,10 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from passlib.context import CryptContext
-try:
-    from jose import jwt
-except ImportError:
-    raise ImportError("python-jose package is required. Install it with: pip install python-jose[cryptography]")
+from jose import jwt, JWTError
 from dotenv import load_dotenv
 
 # Load variabel dari file .env
@@ -24,7 +21,7 @@ SECRET_KEY = os.getenv("SECRET_KEY", "default-insecure-key")
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 30))
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
 # Sesuaikan tokenUrl dengan prefix router kita
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/token")
 
@@ -42,7 +39,7 @@ class Token(BaseModel):
 
 # --- Helper Functions ---
 def get_password_hash(password):
-    return pwd_context.hash(password)
+    return pwd_context.hash(password.encode('utf-8').decode('utf-8'))
 
 def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
@@ -83,3 +80,32 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
         data={"sub": user_dict["username"]}, expires_delta=access_token_expires
     )
     return {"access_token": access_token, "token_type": "bearer"}
+
+async def get_current_user(token: str = Depends(oauth2_scheme)):
+    """Fungsi ini bertindak sebagai middleware/satpam pengecek token"""
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Token tidak valid atau sudah kedaluwarsa",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    
+    try:
+        # 1. Buka (decode) token menggunakan SECRET_KEY kita
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        
+        # 2. Ambil username dari dalam token (kita simpan di key "sub" sebelumnya)
+        username: str = payload.get("sub")
+        if username is None:
+            raise credentials_exception
+            
+    except JWTError:
+        # Jika token palsu atau kedaluwarsa, akan masuk ke sini
+        raise credentials_exception
+        
+    # 3. Cek apakah user benar-benar ada di mock database kita
+    user = mock_users_db.get(username)
+    if user is None:
+        raise credentials_exception
+        
+    # 4. Jika semua aman, kembalikan data user
+    return user

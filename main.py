@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, Depends 
 from pydantic import BaseModel
 import asyncio
 import auth
@@ -38,12 +38,19 @@ async def root():
     return {"message": "SOP-ify Backend is running smoothly!"}
 
 @app.get("/sops", response_model=list[SOPResponse], tags=["SOP Management"])
-async def get_all_sops():
-    """Retrieve all SOPs for the current user."""
+# Tambahkan Depends(auth.get_current_user) di parameter fungsi
+async def get_all_sops(current_user: dict = Depends(auth.get_current_user)):
+    """
+    Endpoint ini sekarang TERKUNCI. 
+    Hanya mengembalikan SOP jika request memiliki Token JWT yang valid.
+    """
+    # Opsional: Kamu bisa print current_user untuk melihat siapa yang sedang akses
+    print(f"User yang sedang akses: {current_user['username']}")
+    
     return list(mock_db.values())
 
 @app.post("/sops/generate", response_model=SOPResponse, tags=["AI Integration"])
-async def generate_dummy_sop(title: str):
+async def generate_dummy_sop(title: str, current_user: dict = Depends(auth.get_current_user)):
     """Simulate the Vertex AI generation delay."""
     # Simulate a 3-second delay for AI processing
     await asyncio.sleep(3)
@@ -59,7 +66,7 @@ async def generate_dummy_sop(title: str):
     return new_sop
 
 @app.post("/upload-audio", tags=["Media"])
-async def upload_audio(file: UploadFile = File(...)):
+async def upload_audio(file: UploadFile = File(...), current_user: dict = Depends(auth.get_current_user)):
     """Save audio locally (Will migrate to GCP Cloud Storage later)."""
     file_location = f"temp_audio/{file.filename}"
     with open(file_location, "wb+") as file_object:
