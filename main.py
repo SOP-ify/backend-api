@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, Depends 
+from fastapi import FastAPI, UploadFile, File, Depends , HTTPException, status
 from pydantic import BaseModel
 import asyncio
 import auth
@@ -20,7 +20,15 @@ class SOPResponse(BaseModel):
     title: str
     content: str
     status: str
-    
+
+class SOPCreate(BaseModel):
+    title: str
+    content: str
+
+class SOPUpdate(BaseModel):
+    title: str | None = None
+    content: str | None = None
+    status: str | None = None
 
 # 3. Mock Database
 mock_db = {
@@ -36,18 +44,6 @@ mock_db = {
 @app.get("/", tags=["Health Check"])
 async def root():
     return {"message": "SOP-ify Backend is running smoothly!"}
-
-@app.get("/sops", response_model=list[SOPResponse], tags=["SOP Management"])
-# Tambahkan Depends(auth.get_current_user) di parameter fungsi
-async def get_all_sops(current_user: dict = Depends(auth.get_current_user)):
-    """
-    Endpoint ini sekarang TERKUNCI. 
-    Hanya mengembalikan SOP jika request memiliki Token JWT yang valid.
-    """
-    # Opsional: Kamu bisa print current_user untuk melihat siapa yang sedang akses
-    print(f"User yang sedang akses: {current_user['username']}")
-    
-    return list(mock_db.values())
 
 @app.post("/sops/generate", response_model=SOPResponse, tags=["AI Integration"])
 async def generate_dummy_sop(title: str, current_user: dict = Depends(auth.get_current_user)):
@@ -72,3 +68,62 @@ async def upload_audio(file: UploadFile = File(...), current_user: dict = Depend
     with open(file_location, "wb+") as file_object:
         file_object.write(file.file.read())
     return {"info": f"file '{file.filename}' saved at '{file_location}'"}
+
+# 1. CREATE (Membuat SOP Baru)
+@app.post("/sops", response_model=SOPResponse, status_code=201, tags=["SOP Management"])
+async def create_sop(sop: SOPCreate, current_user: dict = Depends(auth.get_current_user)):
+    """Membuat SOP baru ke dalam database."""
+    # Generate ID unik sederhana
+    new_id = str(len(mock_db) + 100) 
+    new_sop = {
+        "id": new_id,
+        "title": sop.title,
+        "content": sop.content,
+        "status": "draft" # Default status
+    }
+    mock_db[new_id] = new_sop
+    return new_sop
+
+# 2. READ ALL (Membaca Semua SOP - Ini sudah ada, pastikan bentuknya seperti ini)
+@app.get("/sops", response_model=list[SOPResponse], tags=["SOP Management"])
+async def get_all_sops(current_user: dict = Depends(auth.get_current_user)):
+    return list(mock_db.values())
+
+# 3. READ ONE (Membaca Satu SOP berdasarkan ID)
+@app.get("/sops/{sop_id}", response_model=SOPResponse, tags=["SOP Management"])
+async def get_sop(sop_id: str, current_user: dict = Depends(auth.get_current_user)):
+    """Mengambil detail satu SOP berdasarkan ID-nya."""
+    sop = mock_db.get(sop_id)
+    if not sop:
+        # Ini adalah implementasi Error Handling 404
+        raise HTTPException(status_code=404, detail="SOP tidak ditemukan")
+    return sop
+
+# 4. UPDATE (Mengubah isi SOP)
+@app.put("/sops/{sop_id}", response_model=SOPResponse, tags=["SOP Management"])
+async def update_sop(sop_id: str, sop_update: SOPUpdate, current_user: dict = Depends(auth.get_current_user)):
+    """Mengubah data SOP yang sudah ada."""
+    sop = mock_db.get(sop_id)
+    if not sop:
+        raise HTTPException(status_code=404, detail="SOP tidak ditemukan")
+    
+    # Hanya update field yang dikirimkan
+    if sop_update.title is not None:
+        sop["title"] = sop_update.title
+    if sop_update.content is not None:
+        sop["content"] = sop_update.content
+    if sop_update.status is not None:
+        sop["status"] = sop_update.status
+        
+    mock_db[sop_id] = sop
+    return sop
+
+# 5. DELETE (Menghapus SOP)
+@app.delete("/sops/{sop_id}", tags=["SOP Management"])
+async def delete_sop(sop_id: str, current_user: dict = Depends(auth.get_current_user)):
+    """Menghapus SOP dari database."""
+    if sop_id not in mock_db:
+        raise HTTPException(status_code=404, detail="SOP tidak ditemukan")
+    
+    del mock_db[sop_id]
+    return {"message": f"SOP dengan ID {sop_id} berhasil dihapus"}
