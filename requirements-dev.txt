@@ -1,0 +1,12 @@
+# requirements-dev.txt
+# -> install: pip install -r requirements-dev.txt
+# -> dependencies ini hanya untuk development & testing, TIDAK masuk Docker image production
+
+-r requirements.txt
+
+# testing
+pytest==8.4.1
+pytest-mock==3.14.1
+pytest-cov==7.0.0
+httpx==0.28.1
+anyio==4.9.0

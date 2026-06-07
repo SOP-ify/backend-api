@@ -18,8 +18,15 @@ email-validator==2.2.0
 
 python-dotenv==1.1.1
 
-pytest==8.4.1
-pytest-mock==3.14.1
-pytest-cov==7.0.0
-httpx==0.28.1
-anyio==4.9.0
+# machine learning
+# torch di-install via Dockerfile pakai --index-url cu126 (jangan pin di sini)
+torch
+transformers==4.44.2
+peft==0.12.0
+accelerate==0.33.0
+bitsandbytes>=0.43.0
+faster-whisper>=1.0.3
+huggingface-hub>=0.24.0
+
+# google cloud
+google-cloud-storage>=2.18.0

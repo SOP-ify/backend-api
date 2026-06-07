@@ -1,0 +1,74 @@
+# cloudbuild.yaml
+#
+# -> CI/CD pipeline untuk Cloud Run
+#      -> Step 1: build Docker image
+#      -> Step 2: push ke Artifact Registry
+#      -> Step 3: deploy ke Cloud Run asia-southeast1 (GPU L4)
+#
+# Cara pakai:
+#   gcloud builds submit --config=cloudbuild.yaml
+#   ATAU auto-trigger via Cloud Build trigger dari GitHub
+
+substitutions:
+  _REGION: asia-southeast1
+  _SERVICE: sopify-api
+  _IMAGE: asia-southeast1-docker.pkg.dev/$PROJECT_ID/sopify/sopify-api
+
+steps:
+  # step 1: build image Docker (multi-stage)
+  - name: gcr.io/cloud-builders/docker
+    id: build
+    args:
+      - build
+      - --tag
+      - $_IMAGE:$SHORT_SHA
+      - --tag
+      - $_IMAGE:latest
+      - --cache-from
+      - $_IMAGE:latest          # layer cache dari build sebelumnya
+      - .
+    timeout: 1800s
+
+  # step 2: push image ke Artifact Registry
+  - name: gcr.io/cloud-builders/docker
+    id: push
+    args:
+      - push
+      - --all-tags
+      - $_IMAGE
+    waitFor: [build]
+
+  # step 3: deploy ke Cloud Run dengan GPU L4
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    id: deploy
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - $_SERVICE
+      - --image=$_IMAGE:$SHORT_SHA
+      - --region=$_REGION
+      - --gpu=1
+      - --gpu-type=nvidia-l4
+      - --memory=16Gi
+      - --cpu=4
+      - --min-instances=1
+      - --max-instances=3
+      - --concurrency=1
+      - --timeout=3600
+      - --execution-environment=gen2
+      - --no-allow-unauthenticated
+      - --quiet
+    waitFor: [push]
+
+# image yang di-push setelah build
+images:
+  - $_IMAGE:$SHORT_SHA
+  - $_IMAGE:latest
+
+# timeout total build
+timeout: 3600s
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: E2_HIGHCPU_8    # lebih cepat build

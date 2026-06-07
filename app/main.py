@@ -1,116 +1,144 @@
 # app/main.py
+#
+# -> entry point FastAPI app
+#      -> app factory + lifespan (startup/shutdown)
+#      -> startup : connect MongoDB + load ML model (kalau ML_AUTO_LOAD=True)
+#      -> shutdown : unload model + close MongoDB
+#      -> mount semua router : auth, user, sop_history, ml
+#      -> CORS middleware
+#      -> GET /health endpoint
 
-# -> entry point
-#      -> konfigurasi CORS untuk Android client
-#      -> manage lifecycle MongoDB (connect/disconnect via lifespan)
-#      -> route
-#      -> global exception handler and 505
-
+import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, status
+
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from fastapi.exceptions import RequestValidationError
 
 from app.core.config import settings
-from app.core.database import connect_to_mongo, close_mongo_connection
-from app.modules.auth import repository as auth_repository
+from app.core.database import connect_db, close_db
 from app.modules.auth.router import router as auth_router
+from app.modules.user.router import router as user_router
+from app.modules.sop_history.router import router as sop_history_router
+from app.modules.ml.router import router as ml_router
+
+logger = logging.getLogger(__name__)
 
 
-# lifespan ------------------------------------------------------------------------
+# lifespan ────────────────────────────────────────────────────────────────────
 
-# manage startup dan shutdown MongoDB
+# lifecycle startup dan shutdown
+# - startup  : connect MongoDB, load ML model kalau ML_AUTO_LOAD=True
+# - shutdown : unload model, close MongoDB
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # startup
-    await connect_to_mongo()
-    await auth_repository.ensure_indexes()
+    logger.info("=== SOP-ify API starting up ===")
 
-    yield  
+    # connect MongoDB
+    await connect_db()
+    logger.info("MongoDB: connected")
 
-    # shutdown
-    await close_mongo_connection()
+    # load ML model saat startup kalau dikonfigurasi
+    if settings.ML_AUTO_LOAD:
+        logger.info("ML_AUTO_LOAD=True: loading model...")
+        try:
+            import torch
+            from app.modules.ml.engine.sop_generator import get_sop_generator
+            from app.modules.ml.engine.stt_engine import get_stt_engine
 
-# end of lifespan -----------------------------------------------------------------
+            device = settings.CUDA_DEVICE if torch.cuda.is_available() else "cpu"
+            logger.info("ML: target device = %s", device)
+
+            # load SOP generator (Gemma 2 + LoRA)
+            generator = get_sop_generator(
+                model_id=settings.ML_MODEL_ID,
+                adapter_id=settings.ML_ADAPTER_ID,
+                hf_token=settings.HUGGINGFACE_TOKEN,
+            )
+            generator.load(device=device)
+
+            # load Whisper STT
+            stt = get_stt_engine(model_size=settings.WHISPER_MODEL_SIZE)
+            stt.load()
+
+            logger.info("ML: semua model berhasil di-load ke %s", device)
+
+        except Exception as e:
+            # jangan crash server kalau model gagal load
+            # endpoint /ml/load masih bisa dipanggil manual
+            logger.error("ML: gagal auto-load model - %s", e)
+            logger.warning("ML: server tetap jalan, panggil POST /api/v1/ml/load secara manual")
+
+    logger.info("=== SOP-ify API ready ===")
+    yield
+
+    # ── SHUTDOWN ─────────────────────────────────────────────────────────────
+    logger.info("=== SOP-ify API shutting down ===")
+
+    try:
+        from app.modules.ml.engine.sop_generator import get_sop_generator
+        from app.modules.ml.engine.stt_engine import get_stt_engine
+        get_sop_generator().unload()
+        get_stt_engine().unload()
+    except Exception as e:
+        logger.warning("ML: gagal unload saat shutdown - %s", e)
+
+    await close_db()
+    logger.info("=== SOP-ify API stopped ===")
+
+# end of lifespan ─────────────────────────────────────────────────────────────
 
 
-# application factory -------------------------------------------------------------
+# app factory ─────────────────────────────────────────────────────────────────
 
-# instance FastAPI
-def create_application() -> FastAPI:
-    app = FastAPI(
-        title=settings.APP_NAME,
-        description=(
-            "Backend API SOP-ify. "
-            "mewoooowwwwwwww, i love hoshino ai"
-        ),
-        version=settings.APP_VERSION,
-        lifespan=lifespan,
-        docs_url="/docs",
-        redoc_url="/redoc",
+app = FastAPI(
+    title=settings.APP_NAME,
+    version=settings.APP_VERSION,
+    description="Backend API SOP-ify — platform generate SOP berbasis AI untuk UMKM Indonesia.",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    lifespan=lifespan,
+)
+
+# CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# mount routers
+app.include_router(auth_router)
+app.include_router(user_router)
+app.include_router(sop_history_router)
+app.include_router(ml_router)
+
+# end of app factory ──────────────────────────────────────────────────────────
+
+
+# health ──────────────────────────────────────────────────────────────────────
+
+# GET / dan GET /health — health check untuk Cloud Run startup probe dan load balancer
+# - output : { success, message, data: { status, version, model_loaded } }
+# - note   : tidak butuh auth, dipakai Cloud Run untuk cek apakah container siap
+@app.get("/", tags=["Health"])
+@app.get("/health", tags=["Health"])
+async def health_check() -> dict:
+    try:
+        from app.modules.ml.engine.sop_generator import get_sop_generator
+        model_loaded = get_sop_generator().is_loaded()
+    except Exception:
+        model_loaded = False
+
+    from app.shared.response import success_response
+    return success_response(
+        message="SOP-ify API is running",
+        data={
+            "status": "ok",
+            "version": settings.APP_VERSION,
+            "model_loaded": model_loaded,
+        },
     )
 
-    # cors middleware
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=settings.ALLOWED_ORIGINS,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-
-    # global exception handler
-    # - output : { success: False, message, data: [{ field, message }] }
-    @app.exception_handler(RequestValidationError)
-    async def validation_exception_handler(
-        request: Request, exc: RequestValidationError
-    ):
-        errors = []
-        for error in exc.errors():
-            field = " -> ".join(str(loc) for loc in error["loc"] if loc != "body")
-            errors.append({"field": field, "message": error["msg"]})
-
-        return JSONResponse(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            content={
-                "success": False,
-                "message": "Validasi input gagal",
-                "data": errors,
-            },
-        )
-
-    # exception handler error yang tidak ter-handle
-    # - output : { success: False, message: "Terjadi kesalahan internal pada server", data: None }
-    @app.exception_handler(Exception)
-    async def generic_exception_handler(request: Request, exc: Exception):
-        return JSONResponse(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            content={
-                "success": False,
-                "message": "Terjadi kesalahan internal pada server",
-                "data": None,
-            },
-        )
-
-    app.include_router(auth_router)
-    # tambah router modul baru di bawah sini
-    # app.include_router(history_router)
-    # app.include_router(ml_router)
-
-    # health check endpoint
-    # - output : { success: True, message: "<APP_NAME> v<VERSION> is running", data: None }
-    @app.get("/", tags=["Health Check"], summary="Health Check")
-    async def health_check():
-        return {
-            "success": True,
-            "message": f"{settings.APP_NAME} v{settings.APP_VERSION} is running",
-            "data": None,
-        }
-
-    return app
-
-
-app = create_application()
-
-# end of application factory ------------------------------------------------------
+# end of health ───────────────────────────────────────────────────────────────

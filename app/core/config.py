@@ -9,6 +9,8 @@ from functools import lru_cache
 # - group db      : MONGODB_URI, MONGODB_DATABASE
 # - group jwt     : SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
 # - group cors    : ALLOWED_ORIGINS
+# - group ml      : ML_MODEL_ID, ML_ADAPTER_ID, HUGGINGFACE_TOKEN, WHISPER_MODEL_SIZE
+# - group gcs     : GCS_BUCKET_NAME, GCS_CREDENTIALS_JSON
 class Settings(BaseSettings):
     # - app
     APP_NAME: str = "SOP-ify API"
@@ -26,6 +28,21 @@ class Settings(BaseSettings):
 
     # - cors
     ALLOWED_ORIGINS: list[str] = ["*"]
+
+    # - machine learning
+    ML_MODEL_ID: str = "google/gemma-2-2b-it"
+    ML_ADAPTER_ID: str = "iqbalreza/sopify-gemma2-2b-umkm-lora"
+    HUGGINGFACE_TOKEN: str | None = None
+    WHISPER_MODEL_SIZE: str = "medium"
+    # - auto-load model saat startup (True = load di lifespan, False = manual via /ml/load)
+    # - set False kalau mau hemat VRAM saat development
+    ML_AUTO_LOAD: bool = True
+    # - device target untuk inference, "cuda:0" untuk Cloud Run L4 GPU
+    CUDA_DEVICE: str = "cuda:0"
+
+    # - google cloud storage
+    GCS_BUCKET_NAME: str = "sopify-bucket"
+    GCS_CREDENTIALS_JSON: str | None = None  # service account JSON sebagai string
 
     model_config = SettingsConfigDict(
         env_file=".env",

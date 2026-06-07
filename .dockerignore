@@ -1,0 +1,59 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env.local
+
+# Environment secrets
+.env
+!.env.example
+
+# Test artifacts
+tests/
+.pytest_cache/
+.coverage
+htmlcov/
+*.xml
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Git
+.git/
+.gitignore
+
+# Docs
+*.MD
+*.md
+*.pdf
+inference.pdf
+
+# Dataset dan models (jangan masuk image)
+dataset-sop/
+models/
+
+# Benchmark notebooks
+tests/benchmarks/benchmark_results.json
+tests/benchmarks/benchmark_chart.png
+
+# Cache HuggingFace (model di-download saat runtime, bukan di image)
+.cache/
+
+# Legacy files
+main.py
+auth.py

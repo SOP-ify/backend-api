@@ -5,8 +5,8 @@
 #      -> login user
 #      -> logout (blacklist token)
 #      -> ambil profil user
-#      -> forgot password
-#      -> reset password
+# #      -> forgot password  (nonaktif)
+# #      -> reset password   (nonaktif)
 # -> orkestrasi antara schemas, repository, sama security utils
 
 from datetime import datetime, timedelta, timezone
@@ -154,56 +154,56 @@ async def get_user_profile(user_id: str) -> UserPublicResponse:
     return _build_user_public(user_doc)
 
 
-# inisiasi alur forgot password - kirim reset token ke email
-# - input  : email (str)
-# - output : dict { message, _dev_reset_token }
-# - note   : selalu return success meskipun email tidak ada
-# - todo   : email service blm ada
-async def forgot_password(email: str) -> dict:
-    user_doc = await repository.find_user_by_email(email)
+# # inisiasi alur forgot password - kirim reset token ke email
+# # - input  : email (str)
+# # - output : dict { message, _dev_reset_token }
+# # - note   : selalu return success meskipun email tidak ada
+# # - todo   : email service blm ada
+# async def forgot_password(email: str) -> dict:
+#     user_doc = await repository.find_user_by_email(email)
 
-    if not user_doc:
-        return {"message": "Jika email terdaftar, link reset password telah dikirim"}
+#     if not user_doc:
+#         return {"message": "Jika email terdaftar, link reset password telah dikirim"}
 
-    # buat token reset yang expired 15 menit
-    reset_token = create_access_token(
-        data={"sub": user_doc["id"], "type": "password_reset"},
-        expires_delta=timedelta(minutes=15),
-    )
+#     # buat token reset yang expired 15 menit
+#     reset_token = create_access_token(
+#         data={"sub": user_doc["id"], "type": "password_reset"},
+#         expires_delta=timedelta(minutes=15),
+#     )
 
-    # todo: kirim reset_token via email di sini
-    # await email_service.send_password_reset(email=email, token=reset_token)
+#     # todo: kirim reset_token via email di sini
+#     # await email_service.send_password_reset(email=email, token=reset_token)
 
-    return {
-        "message": "Jika email terdaftar, link reset password telah dikirim",
-        "_dev_reset_token": reset_token,
-    }
+#     return {
+#         "message": "Jika email terdaftar, link reset password telah dikirim",
+#         "_dev_reset_token": reset_token,
+#     }
 
 
-# validasi reset token lalu update password user
-# - input  : token (str JWT reset), new_password (str)
-# - output : dict { message }
-# - error  : 400 kalau token tidak valid/expired, 404 kalau user tidak ditemukan
-async def reset_password(token: str, new_password: str) -> dict:
-    try:
-        payload = decode_token(token)
-        token_type = payload.get("type")
-        user_id = payload.get("sub")
+# # validasi reset token lalu update password user
+# # - input  : token (str JWT reset), new_password (str)
+# # - output : dict { message }
+# # - error  : 400 kalau token tidak valid/expired, 404 kalau user tidak ditemukan
+# async def reset_password(token: str, new_password: str) -> dict:
+#     try:
+#         payload = decode_token(token)
+#         token_type = payload.get("type")
+#         user_id = payload.get("sub")
 
-        if token_type != "password_reset" or not user_id:
-            raise bad_request_exception("Token reset password tidak valid")
+#         if token_type != "password_reset" or not user_id:
+#             raise bad_request_exception("Token reset password tidak valid")
 
-    except JWTError:
-        raise bad_request_exception("Token reset password sudah kadaluarsa atau tidak valid")
+#     except JWTError:
+#         raise bad_request_exception("Token reset password sudah kadaluarsa atau tidak valid")
 
-    hashed = hash_password(new_password)
-    updated = await repository.update_user_password(
-        user_id=user_id, hashed_password=hashed
-    )
+#     hashed = hash_password(new_password)
+#     updated = await repository.update_user_password(
+#         user_id=user_id, hashed_password=hashed
+#     )
 
-    if not updated:
-        raise not_found_exception("User")
+#     if not updated:
+#         raise not_found_exception("User")
 
-    return {"message": "Password berhasil diperbarui"}
+#     return {"message": "Password berhasil diperbarui"}
 
 # end of auth operations ----------------------------------------------------------

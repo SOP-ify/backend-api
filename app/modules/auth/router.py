@@ -5,8 +5,8 @@
 #      -> POST /login
 #      -> POST /logout
 #      -> GET  /me
-#      -> POST /forgot-password
-#      -> POST /reset-password
+# #      -> POST /forgot-password   (nonaktif)
+# #      -> POST /reset-password    (nonaktif)
 # -> layer ini hanya handle HTTP (request in, response out)
 
 from fastapi import APIRouter, Depends, status
@@ -16,8 +16,8 @@ from app.modules.auth import service
 from app.modules.auth.schemas import (
     RegisterRequest,
     LoginRequest,
-    ForgotPasswordRequest,
-    ResetPasswordRequest,
+    # ForgotPasswordRequest,
+    # ResetPasswordRequest,
     RegisterResponse,
     TokenResponse,
     UserPublicResponse,
@@ -106,39 +106,39 @@ async def get_my_profile(current_user: dict = Depends(get_current_user)) -> dict
     )
 
 
-# POST /forgot-password - request link reset password
-# - input  : ForgotPasswordRequest { email }
-# - output : { success, message, data: { _dev_reset_token } }
-# - note   : selalu return 200 meskipun email tidak ada
-@router.post(
-    "/forgot-password",
-    status_code=status.HTTP_200_OK,
-    summary="Lupa Password",
-    description="Meminta link reset password dikirim ke email.",
-)
-async def forgot_password(payload: ForgotPasswordRequest) -> dict:
-    result = await service.forgot_password(email=payload.email)
-    return success_response(
-        message=result["message"],
-        data={"_dev_reset_token": result.get("_dev_reset_token")},
-    )
+# # POST /forgot-password - request link reset password
+# # - input  : ForgotPasswordRequest { email }
+# # - output : { success, message, data: { _dev_reset_token } }
+# # - note   : selalu return 200 meskipun email tidak ada
+# @router.post(
+#     "/forgot-password",
+#     status_code=status.HTTP_200_OK,
+#     summary="Lupa Password",
+#     description="Meminta link reset password dikirim ke email.",
+# )
+# async def forgot_password(payload: ForgotPasswordRequest) -> dict:
+#     result = await service.forgot_password(email=payload.email)
+#     return success_response(
+#         message=result["message"],
+#         data={"_dev_reset_token": result.get("_dev_reset_token")},
+#     )
 
 
-# POST /reset-password - update password pakai reset token
-# - input  : ResetPasswordRequest { token, new_password }
-# - output : { success, message }
-# - error  : 400 kalau token invalid/expired
-@router.post(
-    "/reset-password",
-    status_code=status.HTTP_200_OK,
-    summary="Reset Password",
-    description="Memperbarui password menggunakan token reset yang diterima via email.",
-)
-async def reset_password(payload: ResetPasswordRequest) -> dict:
-    result = await service.reset_password(
-        token=payload.token,
-        new_password=payload.new_password,
-    )
-    return success_response(message=result["message"])
+# # POST /reset-password - update password pakai reset token
+# # - input  : ResetPasswordRequest { token, new_password }
+# # - output : { success, message }
+# # - error  : 400 kalau token invalid/expired
+# @router.post(
+#     "/reset-password",
+#     status_code=status.HTTP_200_OK,
+#     summary="Reset Password",
+#     description="Memperbarui password menggunakan token reset yang diterima via email.",
+# )
+# async def reset_password(payload: ResetPasswordRequest) -> dict:
+#     result = await service.reset_password(
+#         token=payload.token,
+#         new_password=payload.new_password,
+#     )
+#     return success_response(message=result["message"])
 
 # end of endpoints ----------------------------------------------------------------
