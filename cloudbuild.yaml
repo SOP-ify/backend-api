@@ -52,6 +52,7 @@ steps:
       - --gpu-type=nvidia-l4
       - --memory=16Gi
       - --cpu=4
+      - --port=8000
       - --min-instances=1
       - --max-instances=3
       - --concurrency=1
